@@ -1,0 +1,74 @@
+{
+	"mcpServers": {
+		"memory": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-memory"
+			],
+			"alwaysAllow": [
+				"create_entities",
+				"create_relations",
+				"add_observations",
+				"delete_entities",
+				"delete_observations",
+				"delete_relations",
+				"read_graph",
+				"search_nodes",
+				"open_nodes"
+			]
+		},
+		"context7": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@upstash/context7-mcp"
+			],
+			"env": {
+				"DEFAULT_MINIMUM_TOKENS": ""
+			},
+			"alwaysAllow": [
+				"resolve-library-id",
+				"query-docs"
+			],
+			"disabled": true
+		},
+		"sequentialthinking": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-sequential-thinking"
+			],
+			"alwaysAllow": [],
+			"disabled": true
+		},
+		"postgres": {
+			"command": "npx",
+			"args": [
+				"-y",
+				"@modelcontextprotocol/server-postgres",
+				"postgresql+asyncpg://weather:weather@localhost:5432/weatherservice"
+			],
+			"alwaysAllow": [
+				"query"
+			]
+		},
+		"weather-service": {
+			"command": "/Users/kaleh1na/Desktop/itmo-practice-kaleh1na/practices/practice_03/venv/bin/python",
+			"args": [
+				"-m",
+				"mcp_server.server"
+			],
+			"cwd": "/Users/kaleh1na/Desktop/itmo-practice-kaleh1na/practices/practice_03",
+			"env": {
+				"WEATHER_SERVICE_URL": "http://localhost:8000"
+			},
+			"alwaysAllow": [
+				"list_subscriptions",
+				"create_subscription",
+				"get_weather",
+				"delete_subscription"
+			]
+		}
+	}
+}
