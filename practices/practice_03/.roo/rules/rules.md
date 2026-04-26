@@ -1,3 +1,7 @@
+## Memory Bank
+
+Перед каждой сессией ходи в мемори банк по MCP узнавая контекст, после каждой сессии записывай важные данные в мемори банк.
+
 ## Dev environment tips
 
 - Run `uvicorn main:app --reload` to start the development server with hot reload.

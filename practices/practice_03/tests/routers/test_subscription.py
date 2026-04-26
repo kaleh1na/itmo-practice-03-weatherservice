@@ -132,6 +132,17 @@ class TestPostSubscribe:
         assert response.json()["detail"] == "City not found"
 
 
+    def test_create_subscription_invalid_email_returns_422(self) -> None:
+        """Невалидный email возвращает 422 Unprocessable Entity."""
+        client = TestClient(app)
+        response = client.post(
+            "/subscribe",
+            json={"email": "not-an-email", "city": "London"},
+        )
+
+        assert response.status_code == 422
+
+
 class TestDeleteSubscription:
     """Тесты для DELETE /subscribe/{id}."""
 
@@ -201,3 +212,19 @@ class TestGetSubscriptions:
         assert data["subscriptions"][1]["subscription_id"] == 2
         assert data["subscriptions"][1]["city"] == "Paris"
         assert data["subscriptions"][1]["email"] == "bob@example.com"
+
+    def test_get_subscriptions_empty_returns_200_with_zero_total(self) -> None:
+        """GET /subscriptions при отсутствии подписок возвращает 200 с пустым списком и total=0."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+
+        with patch("routers.subscription.get_all_subscriptions", return_value=[]) as _:
+            client = TestClient(app)
+            response = client.get("/subscriptions")
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["subscriptions"] == []
