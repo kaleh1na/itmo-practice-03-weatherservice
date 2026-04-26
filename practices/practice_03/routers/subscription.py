@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -9,14 +10,19 @@ from db.repository import (
     delete_subscription,
     get_all_subscriptions,
     get_or_create_user,
+    get_subscription_by_id,
     get_subscription_by_user_city,
+    update_subscription,
 )
+from models.db_models import Subscription, User
 from models.weather import ErrorResponse
 from models.subscription import (
     SubscriptionRequest,
     SubscriptionResponse,
     SubscriptionItem,
     SubscriptionsListResponse,
+    SubscriptionUpdate,
+    SubscriptionUpdateResponse,
 )
 from routers.weather import _fetch_weather
 
@@ -112,3 +118,58 @@ async def get_subscriptions_route(
         for sub, email in rows
     ]
     return SubscriptionsListResponse(subscriptions=items, total=len(items))
+
+
+@router.patch(
+    "/subscribe/{subscription_id}",
+    response_model=SubscriptionUpdateResponse,
+    responses={
+        422: {"model": ErrorResponse, "description": "Невалидные данные или пустое тело запроса"},
+        404: {"model": ErrorResponse, "description": "Подписка не найдена"},
+    },
+    summary="Обновить подписку",
+)
+async def update_subscription_route(
+    subscription_id: int,
+    update_data: SubscriptionUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> SubscriptionUpdateResponse:
+    """Обновляет существующую подписку (время уведомления и/или активность)."""
+    logger.info(
+        "PATCH /subscribe/%d — notification_time=%s is_active=%s",
+        subscription_id,
+        update_data.notification_time,
+        update_data.is_active,
+    )
+
+    updated_subscription = await update_subscription(
+        db,
+        subscription_id,
+        notification_time=update_data.notification_time,
+        is_active=update_data.is_active,
+    )
+
+    if updated_subscription is None:
+        logger.warning("PATCH /subscribe/%d — не найдена", subscription_id)
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    result = await db.execute(
+        select(User.email)
+        .join(Subscription, Subscription.user_id == User.id)
+        .where(Subscription.id == subscription_id)
+    )
+    user_email = result.scalar_one_or_none()
+    if user_email is None:
+        logger.error("PATCH /subscribe/%d — не удалось получить email пользователя", subscription_id)
+        raise HTTPException(status_code=404, detail="Subscription not found")
+
+    logger.info("PATCH /subscribe/%d — обновлена", subscription_id)
+
+    return SubscriptionUpdateResponse(
+        subscription_id=updated_subscription.id,
+        email=user_email,
+        city=updated_subscription.city,
+        notification_time=updated_subscription.notification_time,
+        is_active=updated_subscription.is_active,
+        created_at=updated_subscription.created_at,
+    )
