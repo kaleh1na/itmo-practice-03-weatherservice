@@ -233,11 +233,19 @@ class TestGetSubscriptions:
 class TestPatchSubscription:
     """Тесты для PATCH /subscribe/{id}."""
 
+    def _setup_mock_db_with_email(self, email: str) -> AsyncMock:
+        """Создаёт мок БД с настроенным scalar_one_or_none для возврата email."""
+        mock_db = _make_mock_db()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = email
+        mock_db.execute.return_value = mock_result
+        return mock_db
+
     def test_update_subscription_notification_time_happy_path(self) -> None:
         """Успешное обновление времени уведомления возвращает 200 с обновлённой подпиской."""
         from datetime import datetime, time as time_type
 
-        mock_db = _make_mock_db()
+        mock_db = self._setup_mock_db_with_email("user@example.com")
         app.dependency_overrides[get_db] = _override_get_db(mock_db)
 
         mock_updated = MagicMock()
@@ -246,11 +254,6 @@ class TestPatchSubscription:
         mock_updated.notification_time = time_type(18, 30)
         mock_updated.is_active = True
         mock_updated.created_at = datetime(2026, 4, 26, 10, 0, 0)
-
-        mock_result = MagicMock()
-        mock_row = (None, "user@example.com")
-        mock_result.first.return_value = mock_row
-        mock_db.execute.return_value = mock_result
 
         with patch("routers.subscription.update_subscription", return_value=mock_updated) as _:
             client = TestClient(app)
@@ -273,7 +276,7 @@ class TestPatchSubscription:
         """Успешное обновление активности подписки возвращает 200."""
         from datetime import datetime, time as time_type
 
-        mock_db = _make_mock_db()
+        mock_db = self._setup_mock_db_with_email("test@example.com")
         app.dependency_overrides[get_db] = _override_get_db(mock_db)
 
         mock_updated = MagicMock()
@@ -282,11 +285,6 @@ class TestPatchSubscription:
         mock_updated.notification_time = time_type(9, 0)
         mock_updated.is_active = False
         mock_updated.created_at = datetime(2026, 4, 26, 10, 0, 0)
-
-        mock_result = MagicMock()
-        mock_row = (None, "test@example.com")
-        mock_result.first.return_value = mock_row
-        mock_db.execute.return_value = mock_result
 
         with patch("routers.subscription.update_subscription", return_value=mock_updated) as _:
             client = TestClient(app)
@@ -306,7 +304,7 @@ class TestPatchSubscription:
         """Успешное обновление обоих полей одновременно возвращает 200."""
         from datetime import datetime, time as time_type
 
-        mock_db = _make_mock_db()
+        mock_db = self._setup_mock_db_with_email("alice@example.com")
         app.dependency_overrides[get_db] = _override_get_db(mock_db)
 
         mock_updated = MagicMock()
@@ -315,11 +313,6 @@ class TestPatchSubscription:
         mock_updated.notification_time = time_type(20, 0)
         mock_updated.is_active = False
         mock_updated.created_at = datetime(2026, 4, 26, 10, 0, 0)
-
-        mock_result = MagicMock()
-        mock_row = (None, "alice@example.com")
-        mock_result.first.return_value = mock_row
-        mock_db.execute.return_value = mock_result
 
         with patch("routers.subscription.update_subscription", return_value=mock_updated) as _:
             client = TestClient(app)
@@ -373,3 +366,14 @@ class TestPatchSubscription:
         )
 
         assert response.status_code == 422
+
+    def test_update_subscription_extra_fields_returns_422(self) -> None:
+        """Передача запрещённых полей (city, email) возвращает 422."""
+        client = TestClient(app)
+        response = client.patch(
+            "/subscribe/1",
+            json={"city": "Moscow"},
+        )
+
+        assert response.status_code == 422
+        assert "Extra inputs are not permitted" in response.json()["detail"][0]["msg"]

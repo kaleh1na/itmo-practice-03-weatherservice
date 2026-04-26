@@ -154,16 +154,14 @@ async def update_subscription_route(
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     result = await db.execute(
-        select(Subscription, User.email)
-        .join(User, Subscription.user_id == User.id)
+        select(User.email)
+        .join(Subscription, Subscription.user_id == User.id)
         .where(Subscription.id == subscription_id)
     )
-    row = result.first()
-    if row is None:
+    user_email = result.scalar_one_or_none()
+    if user_email is None:
         logger.error("PATCH /subscribe/%d — не удалось получить email пользователя", subscription_id)
         raise HTTPException(status_code=404, detail="Subscription not found")
-
-    user_email = row[1]
 
     logger.info("PATCH /subscribe/%d — обновлена", subscription_id)
 
