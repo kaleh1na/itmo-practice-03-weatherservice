@@ -228,3 +228,137 @@ class TestGetSubscriptions:
         data = response.json()
         assert data["total"] == 0
         assert data["subscriptions"] == []
+
+
+class TestPatchSubscription:
+    """Тесты для PATCH /subscribe/{id}."""
+
+    def test_update_subscription_notification_time_happy_path(self) -> None:
+        """Успешное обновление времени уведомления возвращает 200 с обновлённой подпиской."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+
+        mock_subscription = MagicMock()
+        mock_subscription.id = 1
+        mock_subscription.city = "Moscow"
+        mock_subscription.user.email = "user@example.com"
+
+        mock_updated = MagicMock()
+        mock_updated.id = 1
+        mock_updated.city = "Moscow"
+
+        with (
+            patch("routers.subscription.update_subscription", return_value=mock_updated) as _,
+            patch("routers.subscription.get_subscription_by_id", return_value=mock_subscription) as _,
+        ):
+            client = TestClient(app)
+            response = client.patch(
+                "/subscribe/1",
+                json={"notification_time": "18:30"},
+            )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["subscription_id"] == 1
+        assert data["city"] == "Moscow"
+        assert data["email"] == "user@example.com"
+
+    def test_update_subscription_is_active_happy_path(self) -> None:
+        """Успешное обновление активности подписки возвращает 200."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+
+        mock_subscription = MagicMock()
+        mock_subscription.id = 2
+        mock_subscription.city = "London"
+        mock_subscription.user.email = "test@example.com"
+
+        mock_updated = MagicMock()
+        mock_updated.id = 2
+        mock_updated.city = "London"
+
+        with (
+            patch("routers.subscription.update_subscription", return_value=mock_updated) as _,
+            patch("routers.subscription.get_subscription_by_id", return_value=mock_subscription) as _,
+        ):
+            client = TestClient(app)
+            response = client.patch(
+                "/subscribe/2",
+                json={"is_active": False},
+            )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["subscription_id"] == 2
+
+    def test_update_subscription_both_fields_happy_path(self) -> None:
+        """Успешное обновление обоих полей одновременно возвращает 200."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+
+        mock_subscription = MagicMock()
+        mock_subscription.id = 3
+        mock_subscription.city = "Paris"
+        mock_subscription.user.email = "alice@example.com"
+
+        mock_updated = MagicMock()
+        mock_updated.id = 3
+        mock_updated.city = "Paris"
+
+        with (
+            patch("routers.subscription.update_subscription", return_value=mock_updated) as _,
+            patch("routers.subscription.get_subscription_by_id", return_value=mock_subscription) as _,
+        ):
+            client = TestClient(app)
+            response = client.patch(
+                "/subscribe/3",
+                json={"notification_time": "20:00", "is_active": False},
+            )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["subscription_id"] == 3
+        assert data["city"] == "Paris"
+
+    def test_update_subscription_not_found_returns_404(self) -> None:
+        """Подписка не найдена — возвращает 404."""
+        mock_db = _make_mock_db()
+        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+
+        with patch("routers.subscription.update_subscription", return_value=None) as _:
+            client = TestClient(app)
+            response = client.patch(
+                "/subscribe/999",
+                json={"is_active": False},
+            )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Subscription not found"
+
+    def test_update_subscription_empty_body_returns_422(self) -> None:
+        """Пустое тело запроса возвращает 422 (Pydantic валидация)."""
+        client = TestClient(app)
+        response = client.patch(
+            "/subscribe/1",
+            json={},
+        )
+
+        assert response.status_code == 422
+
+    def test_update_subscription_invalid_time_returns_422(self) -> None:
+        """Невалидное время возвращает 422 (Pydantic валидация)."""
+        client = TestClient(app)
+        response = client.patch(
+            "/subscribe/1",
+            json={"notification_time": "25:00"},
+        )
+
+        assert response.status_code == 422
