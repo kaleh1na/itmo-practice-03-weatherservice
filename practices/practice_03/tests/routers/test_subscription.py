@@ -230,23 +230,29 @@ class TestGetSubscriptions:
         assert data["subscriptions"] == []
 
 
+@pytest.fixture
+def patch_client():
+    """Фикстура: создаёт TestClient с мок-БД и гарантирует очистку dependency_overrides."""
+    mock_db = _make_mock_db()
+    app.dependency_overrides[get_db] = _override_get_db(mock_db)
+    client = TestClient(app)
+    try:
+        yield client, mock_db
+    finally:
+        app.dependency_overrides.clear()
+
+
 class TestPatchSubscription:
     """Тесты для PATCH /subscribe/{id}."""
 
-    def _setup_mock_db_with_email(self, email: str) -> AsyncMock:
-        """Создаёт мок БД с настроенным scalar_one_or_none для возврата email."""
-        mock_db = _make_mock_db()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = email
-        mock_db.execute.return_value = mock_result
-        return mock_db
-
-    def test_update_subscription_notification_time_happy_path(self) -> None:
+    def test_update_subscription_notification_time_happy_path(self, patch_client) -> None:
         """Успешное обновление времени уведомления возвращает 200 с обновлённой подпиской."""
         from datetime import datetime, time as time_type
 
-        mock_db = self._setup_mock_db_with_email("user@example.com")
-        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+        client, mock_db = patch_client
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = "user@example.com"
+        mock_db.execute.return_value = mock_result
 
         mock_updated = MagicMock()
         mock_updated.id = 1
@@ -256,13 +262,10 @@ class TestPatchSubscription:
         mock_updated.created_at = datetime(2026, 4, 26, 10, 0, 0)
 
         with patch("routers.subscription.update_subscription", return_value=mock_updated) as _:
-            client = TestClient(app)
             response = client.patch(
                 "/subscribe/1",
                 json={"notification_time": "18:30"},
             )
-
-        app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()
@@ -272,12 +275,14 @@ class TestPatchSubscription:
         assert data["notification_time"] == "18:30:00"
         assert data["is_active"] is True
 
-    def test_update_subscription_is_active_happy_path(self) -> None:
+    def test_update_subscription_is_active_happy_path(self, patch_client) -> None:
         """Успешное обновление активности подписки возвращает 200."""
         from datetime import datetime, time as time_type
 
-        mock_db = self._setup_mock_db_with_email("test@example.com")
-        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+        client, mock_db = patch_client
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = "test@example.com"
+        mock_db.execute.return_value = mock_result
 
         mock_updated = MagicMock()
         mock_updated.id = 2
@@ -287,25 +292,24 @@ class TestPatchSubscription:
         mock_updated.created_at = datetime(2026, 4, 26, 10, 0, 0)
 
         with patch("routers.subscription.update_subscription", return_value=mock_updated) as _:
-            client = TestClient(app)
             response = client.patch(
                 "/subscribe/2",
                 json={"is_active": False},
             )
-
-        app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()
         assert data["subscription_id"] == 2
         assert data["is_active"] is False
 
-    def test_update_subscription_both_fields_happy_path(self) -> None:
+    def test_update_subscription_both_fields_happy_path(self, patch_client) -> None:
         """Успешное обновление обоих полей одновременно возвращает 200."""
         from datetime import datetime, time as time_type
 
-        mock_db = self._setup_mock_db_with_email("alice@example.com")
-        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+        client, mock_db = patch_client
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = "alice@example.com"
+        mock_db.execute.return_value = mock_result
 
         mock_updated = MagicMock()
         mock_updated.id = 3
@@ -315,13 +319,10 @@ class TestPatchSubscription:
         mock_updated.created_at = datetime(2026, 4, 26, 10, 0, 0)
 
         with patch("routers.subscription.update_subscription", return_value=mock_updated) as _:
-            client = TestClient(app)
             response = client.patch(
                 "/subscribe/3",
                 json={"notification_time": "20:00", "is_active": False},
             )
-
-        app.dependency_overrides.clear()
 
         assert response.status_code == 200
         data = response.json()
@@ -330,19 +331,15 @@ class TestPatchSubscription:
         assert data["notification_time"] == "20:00:00"
         assert data["is_active"] is False
 
-    def test_update_subscription_not_found_returns_404(self) -> None:
+    def test_update_subscription_not_found_returns_404(self, patch_client) -> None:
         """Подписка не найдена — возвращает 404."""
-        mock_db = _make_mock_db()
-        app.dependency_overrides[get_db] = _override_get_db(mock_db)
+        client, _ = patch_client
 
         with patch("routers.subscription.update_subscription", return_value=None) as _:
-            client = TestClient(app)
             response = client.patch(
                 "/subscribe/999",
                 json={"is_active": False},
             )
-
-        app.dependency_overrides.clear()
 
         assert response.status_code == 404
         assert response.json()["detail"] == "Subscription not found"
