@@ -2,6 +2,7 @@ from datetime import time
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db_models import Subscription, User
@@ -64,9 +65,11 @@ async def get_all_subscriptions(db: AsyncSession) -> list[tuple[Subscription, st
 
 
 async def get_subscription_by_id(db: AsyncSession, subscription_id: int) -> Subscription | None:
-    """Возвращает подписку по ID или None если не найдена."""
+    """Возвращает подписку по ID или None если не найдена. Загружает связь user через selectinload."""
     result = await db.execute(
-        select(Subscription).where(Subscription.id == subscription_id)
+        select(Subscription)
+        .options(selectinload(Subscription.user))
+        .where(Subscription.id == subscription_id)
     )
     return result.scalar_one_or_none()
 

@@ -373,4 +373,6 @@ class TestPatchSubscription:
         )
 
         assert response.status_code == 422
-        assert "Extra inputs are not permitted" in response.json()["detail"][0]["msg"]
+        error = response.json()["detail"][0]
+        assert error["type"] == "extra_forbidden"
+        assert "city" in error["loc"]
