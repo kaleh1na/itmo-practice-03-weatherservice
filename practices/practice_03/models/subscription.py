@@ -1,7 +1,7 @@
-from datetime import time
+from datetime import datetime, time
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from models.weather import WeatherResponse
 
@@ -14,7 +14,9 @@ class SubscriptionRequest(BaseModel):
 
 
 class SubscriptionUpdate(BaseModel):
-    """Тело запроса для обновления подписки."""
+    """Тело запроса для обновления подписки. Запрещает неизвестные поля (city, email и т.д.)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     notification_time: Optional[time] = Field(None, description="Время уведомления в формате HH:MM")
     is_active: Optional[bool] = Field(None, description="Активна ли подписка")
@@ -34,6 +36,19 @@ class SubscriptionUpdate(BaseModel):
         if self.notification_time is None and self.is_active is None:
             raise ValueError("At least one field must be provided for update")
         return self
+
+
+class SubscriptionUpdateResponse(BaseModel):
+    """Ответ после успешного обновления подписки."""
+
+    subscription_id: int
+    email: str
+    city: str
+    notification_time: time
+    is_active: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SubscriptionResponse(BaseModel):

@@ -75,27 +75,27 @@
 
 #### Scenario 6: Ошибка - невалидное время
 
-**Given** существует подписка с ID=5  
-**When** отправляет PATCH `/subscribe/5` с `{"notification_time": "25:00"}`  
-**Then** возвращается 400 Bad Request с сообщением о невалидном формате времени
+**Given** существует подписка с ID=5
+**When** отправляет PATCH `/subscribe/5` с `{"notification_time": "25:00"}`
+**Then** возвращается 422 Unprocessable Entity с сообщением о невалидном формате времени
 
 #### Scenario 7: Ошибка - пустое тело запроса
 
-**Given** существует подписка с ID=6  
-**When** отправляет PATCH `/subscribe/6` с пустым JSON `{}`  
-**Then** возвращается 400 Bad Request с сообщением "At least one field must be provided"
+**Given** существует подписка с ID=6
+**When** отправляет PATCH `/subscribe/6` с пустым JSON `{}`
+**Then** возвращается 422 Unprocessable Entity с сообщением "At least one field must be provided"
 
 #### Scenario 8: Ошибка - попытка изменить city
 
-**Given** существует подписка с ID=7  
-**When** отправляет PATCH `/subscribe/7` с `{"city": "Berlin"}`  
-**Then** возвращается 400 Bad Request с сообщением "Cannot update city field"
+**Given** существует подписка с ID=7
+**When** отправляет PATCH `/subscribe/7` с `{"city": "Berlin"}`
+**Then** возвращается 422 Unprocessable Entity (extra fields not permitted)
 
 #### Scenario 9: Ошибка - попытка изменить email
 
-**Given** существует подписка с ID=8  
-**When** отправляет PATCH `/subscribe/8` с `{"email": "new@example.com"}`  
-**Then** возвращается 400 Bad Request с сообщением "Cannot update email field"
+**Given** существует подписка с ID=8
+**When** отправляет PATCH `/subscribe/8` с `{"email": "new@example.com"}`
+**Then** возвращается 422 Unprocessable Entity (extra fields not permitted)
 
 ### Edge Cases
 
@@ -105,7 +105,7 @@
 - **Время "00:00"** (полночь): Валидное значение, должно быть принято
 - **Время "23:59"**: Валидное значение, должно быть принято
 - **is_active как строка** ("true"/"false"): Pydantic должен преобразовать в boolean
-- **Дополнительные поля в запросе**: Должны быть проигнорированы (Pydantic extra="ignore")
+- **Дополнительные поля в запросе**: Запрещены — Pydantic `extra="forbid"` вернёт 422 Unprocessable Entity
 - **Обновление уже деактивированной подписки**: Должно работать (можно повторно деактивировать или изменить время)
 
 ## Requirements
@@ -117,8 +117,8 @@
 - **FR-017**: Система ДОЛЖНА валидировать `notification_time` в формате HH:MM (00:00 - 23:59)
 - **FR-018**: Система ДОЛЖНА валидировать `is_active` как boolean значение
 - **FR-019**: Система ДОЛЖНА возвращать 404 Not Found если подписка с указанным ID не существует
-- **FR-020**: Система ДОЛЖНА возвращать 400 Bad Request если тело запроса пустое
-- **FR-021**: Система ДОЛЖНА запрещать изменение полей `city` и `email`
+- **FR-020**: Система ДОЛЖНА возвращать 422 Unprocessable Entity если тело запроса пустое или содержит невалидные данные
+- **FR-021**: Система ДОЛЖНА запрещать изменение полей `city` и `email` (возвращать 422 при попытке передать эти поля)
 - **FR-022**: Система ДОЛЖНА возвращать обновлённую подписку в ответе (200 OK)
 - **FR-023**: Система ДОЛЖНА логировать каждую попытку обновления подписки
 
@@ -133,9 +133,9 @@
 
 - **SC-009**: PATCH `/subscribe/{id}` с валидными данными возвращает 200 OK и обновлённую подписку
 - **SC-010**: PATCH `/subscribe/999` (несуществующий ID) возвращает 404 Not Found
-- **SC-011**: PATCH `/subscribe/{id}` с невалидным временем возвращает 400 Bad Request
-- **SC-012**: PATCH `/subscribe/{id}` с пустым телом возвращает 400 Bad Request
-- **SC-013**: PATCH `/subscribe/{id}` с попыткой изменить city/email возвращает 400 Bad Request
+- **SC-011**: PATCH `/subscribe/{id}` с невалидным временем возвращает 422 Unprocessable Entity
+- **SC-012**: PATCH `/subscribe/{id}` с пустым телом возвращает 422 Unprocessable Entity
+- **SC-013**: PATCH `/subscribe/{id}` с попыткой изменить city/email возвращает 422 Unprocessable Entity
 - **SC-014**: Все тесты (unit + integration) проходят успешно
 - **SC-015**: Код прошёл code review и соответствует стандартам проекта
 
@@ -145,22 +145,24 @@
 
 ```python
 class SubscriptionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     notification_time: Optional[time] = Field(None, description="Время уведомления в формате HH:MM")
     is_active: Optional[bool] = Field(None, description="Активна ли подписка")
-    
-    @validator('notification_time')
-    def validate_time(cls, v):
+
+    @field_validator("notification_time")
+    @classmethod
+    def validate_time(cls, v: Optional[time]) -> Optional[time]:
         if v is not None:
-            # Время должно быть в диапазоне 00:00 - 23:59
             if not (0 <= v.hour <= 23 and 0 <= v.minute <= 59):
                 raise ValueError("Time must be in range 00:00 - 23:59")
         return v
-    
-    @root_validator
-    def check_at_least_one_field(cls, values):
-        if not any(values.values()):
-            raise ValueError("At least one field must be provided")
-        return values
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self) -> "SubscriptionUpdate":
+        if self.notification_time is None and self.is_active is None:
+            raise ValueError("At least one field must be provided for update")
+        return self
 ```
 
 ### Response Schema (SubscriptionResponse)
@@ -181,7 +183,7 @@ class SubscriptionResponse(BaseModel):
 
 ### Endpoint
 
-```
+```http
 PATCH /subscribe/{id}
 ```
 
@@ -223,27 +225,27 @@ PATCH /subscribe/{id}
 }
 ```
 
-#### Bad Request (400) - Empty Body
+#### Unprocessable Entity (422) - Empty Body
 
 ```json
 {
-  "detail": "At least one field must be provided for update"
+  "detail": [{"msg": "At least one field must be provided for update"}]
 }
 ```
 
-#### Bad Request (400) - Invalid Time
+#### Unprocessable Entity (422) - Invalid Time
 
 ```json
 {
-  "detail": "Invalid time format. Use HH:MM (00:00 - 23:59)"
+  "detail": [{"msg": "Time must be in range 00:00 - 23:59"}]
 }
 ```
 
-#### Bad Request (400) - Forbidden Field
+#### Unprocessable Entity (422) - Forbidden Field
 
 ```json
 {
-  "detail": "Cannot update field: city. Only notification_time and is_active can be updated"
+  "detail": [{"msg": "Extra inputs are not permitted", "loc": ["body", "city"]}]
 }
 ```
 
@@ -290,8 +292,8 @@ async def update_subscription_endpoint(
    - Успешное обновление is_active
    - Обновление обоих полей
    - 404 для несуществующей подписки
-   - 400 для пустого тела
-   - 400 для невалидного времени
+   - 422 для пустого тела
+   - 422 для невалидного времени
 
 2. **Integration Tests**:
    - Создать подписку → обновить → проверить в БД
